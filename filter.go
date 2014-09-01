@@ -7,6 +7,7 @@ package ldap
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/vanackere/asn1-ber"
 )
@@ -244,4 +245,81 @@ func compileFilter(filter string, pos int) (*ber.Packet, int, error) {
 		newPos++
 		return packet, newPos, err
 	}
+}
+
+func ServerApplyFilter(f *ber.Packet, entry *Entry) (bool, uint64) {
+	//log.Printf("%# v", pretty.Formatter(entry))
+
+	switch filterMap[f.Tag] {
+	default:
+		//log.Fatalf("Unknown LDAP filter code: %d", f.Tag)
+		return false, LDAPResultOperationsError
+	case "Equality Match":
+		if len(f.Children) != 2 {
+			return false, LDAPResultOperationsError
+		}
+		attribute := f.Children[0].Value.(string)
+		value := f.Children[1].Value.(string)
+		for _, a := range entry.Attributes {
+			if strings.ToLower(a.Name) == strings.ToLower(attribute) {
+				for _, v := range a.Values {
+					if strings.ToLower(v) == strings.ToLower(value) {
+						return true, LDAPResultSuccess
+					}
+				}
+			}
+		}
+	case "Present":
+		for _, a := range entry.Attributes {
+			if strings.ToLower(a.Name) == strings.ToLower(f.Data.String()) {
+				return true, LDAPResultSuccess
+			}
+		}
+	case "And":
+		for _, child := range f.Children {
+			ok, exitCode := ServerApplyFilter(child, entry)
+			if exitCode != LDAPResultSuccess {
+				return false, exitCode
+			}
+			if !ok {
+				return false, LDAPResultSuccess
+			}
+		}
+		return true, LDAPResultSuccess
+	case "Or":
+		anyOk := false
+		for _, child := range f.Children {
+			ok, exitCode := ServerApplyFilter(child, entry)
+			if exitCode != LDAPResultSuccess {
+				return false, exitCode
+			} else if ok {
+				anyOk = true
+			}
+		}
+		if anyOk {
+			return true, LDAPResultSuccess
+		}
+	case "Not":
+		if len(f.Children) != 1 {
+			return false, LDAPResultOperationsError
+		}
+		ok, exitCode := ServerApplyFilter(f.Children[0], entry)
+		if exitCode != LDAPResultSuccess {
+			return false, exitCode
+		} else if !ok {
+			return true, LDAPResultSuccess
+		}
+	case "FilterSubstrings":
+		return false, LDAPResultOperationsError
+	case "FilterGreaterOrEqual":
+		return false, LDAPResultOperationsError
+	case "FilterLessOrEqual":
+		return false, LDAPResultOperationsError
+	case "FilterApproxMatch":
+		return false, LDAPResultOperationsError
+	case "FilterExtensibleMatch":
+		return false, LDAPResultOperationsError
+	}
+
+	return false, LDAPResultSuccess
 }

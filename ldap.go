@@ -149,6 +149,12 @@ var LDAPResultCodeMap = map[uint8]string{
 	LDAPResultOther:                        "Other",
 }
 
+// Other LDAP constants
+const (
+	LDAPBindAuthSimple = 0
+	LDAPBindAuthSASL   = 3
+)
+
 // Adds descriptions to an LDAP Response packet for debugging
 func addLDAPDescriptions(packet *ber.Packet) (err error) {
 	defer func() {
