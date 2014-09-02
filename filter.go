@@ -25,7 +25,7 @@ const (
 	FilterExtensibleMatch = 9
 )
 
-var filterMap = map[uint8]string{
+var FilterMap = map[uint8]string{
 	FilterAnd:             "And",
 	FilterOr:              "Or",
 	FilterNot:             "Not",
@@ -164,15 +164,15 @@ func compileFilter(filter string, pos int) (*ber.Packet, int, error) {
 		newPos++
 		return packet, newPos, err
 	case '&':
-		packet = ber.Encode(ber.ClassContext, ber.TypeConstructed, FilterAnd, nil, filterMap[FilterAnd])
+		packet = ber.Encode(ber.ClassContext, ber.TypeConstructed, FilterAnd, nil, FilterMap[FilterAnd])
 		newPos, err = compileFilterSet(filter, pos+1, packet)
 		return packet, newPos, err
 	case '|':
-		packet = ber.Encode(ber.ClassContext, ber.TypeConstructed, FilterOr, nil, filterMap[FilterOr])
+		packet = ber.Encode(ber.ClassContext, ber.TypeConstructed, FilterOr, nil, FilterMap[FilterOr])
 		newPos, err = compileFilterSet(filter, pos+1, packet)
 		return packet, newPos, err
 	case '!':
-		packet = ber.Encode(ber.ClassContext, ber.TypeConstructed, FilterNot, nil, filterMap[FilterNot])
+		packet = ber.Encode(ber.ClassContext, ber.TypeConstructed, FilterNot, nil, FilterMap[FilterNot])
 		var child *ber.Packet
 		child, newPos, err = compileFilter(filter, pos+1)
 		packet.AppendChild(child)
@@ -185,15 +185,15 @@ func compileFilter(filter string, pos int) (*ber.Packet, int, error) {
 			case packet != nil:
 				condition += fmt.Sprintf("%c", filter[newPos])
 			case filter[newPos] == '=':
-				packet = ber.Encode(ber.ClassContext, ber.TypeConstructed, FilterEqualityMatch, nil, filterMap[FilterEqualityMatch])
+				packet = ber.Encode(ber.ClassContext, ber.TypeConstructed, FilterEqualityMatch, nil, FilterMap[FilterEqualityMatch])
 			case filter[newPos] == '>' && filter[newPos+1] == '=':
-				packet = ber.Encode(ber.ClassContext, ber.TypeConstructed, FilterGreaterOrEqual, nil, filterMap[FilterGreaterOrEqual])
+				packet = ber.Encode(ber.ClassContext, ber.TypeConstructed, FilterGreaterOrEqual, nil, FilterMap[FilterGreaterOrEqual])
 				newPos++
 			case filter[newPos] == '<' && filter[newPos+1] == '=':
-				packet = ber.Encode(ber.ClassContext, ber.TypeConstructed, FilterLessOrEqual, nil, filterMap[FilterLessOrEqual])
+				packet = ber.Encode(ber.ClassContext, ber.TypeConstructed, FilterLessOrEqual, nil, FilterMap[FilterLessOrEqual])
 				newPos++
 			case filter[newPos] == '~' && filter[newPos+1] == '=':
-				packet = ber.Encode(ber.ClassContext, ber.TypeConstructed, FilterApproxMatch, nil, filterMap[FilterLessOrEqual])
+				packet = ber.Encode(ber.ClassContext, ber.TypeConstructed, FilterApproxMatch, nil, FilterMap[FilterLessOrEqual])
 				newPos++
 			case packet == nil:
 				attribute += fmt.Sprintf("%c", filter[newPos])
@@ -212,7 +212,7 @@ func compileFilter(filter string, pos int) (*ber.Packet, int, error) {
 		if packet.Tag == FilterEqualityMatch && condition == "*" {
 			packet.TagType = ber.TypePrimitive
 			packet.Tag = FilterPresent
-			packet.Description = filterMap[packet.Tag]
+			packet.Description = FilterMap[packet.Tag]
 			packet.Data.WriteString(attribute)
 			return packet, newPos + 1, nil
 		}
@@ -221,21 +221,21 @@ func compileFilter(filter string, pos int) (*ber.Packet, int, error) {
 		case packet.Tag == FilterEqualityMatch && condition[0] == '*' && condition[len(condition)-1] == '*':
 			// Any
 			packet.Tag = FilterSubstrings
-			packet.Description = filterMap[packet.Tag]
+			packet.Description = FilterMap[packet.Tag]
 			seq := ber.Encode(ber.ClassUniversal, ber.TypeConstructed, ber.TagSequence, nil, "Substrings")
 			seq.AppendChild(ber.NewString(ber.ClassContext, ber.TypePrimitive, FilterSubstringsAny, condition[1:len(condition)-1], "Any Substring"))
 			packet.AppendChild(seq)
 		case packet.Tag == FilterEqualityMatch && condition[0] == '*':
 			// Final
 			packet.Tag = FilterSubstrings
-			packet.Description = filterMap[packet.Tag]
+			packet.Description = FilterMap[packet.Tag]
 			seq := ber.Encode(ber.ClassUniversal, ber.TypeConstructed, ber.TagSequence, nil, "Substrings")
 			seq.AppendChild(ber.NewString(ber.ClassContext, ber.TypePrimitive, FilterSubstringsFinal, condition[1:], "Final Substring"))
 			packet.AppendChild(seq)
 		case packet.Tag == FilterEqualityMatch && condition[len(condition)-1] == '*':
 			// Initial
 			packet.Tag = FilterSubstrings
-			packet.Description = filterMap[packet.Tag]
+			packet.Description = FilterMap[packet.Tag]
 			seq := ber.Encode(ber.ClassUniversal, ber.TypeConstructed, ber.TagSequence, nil, "Substrings")
 			seq.AppendChild(ber.NewString(ber.ClassContext, ber.TypePrimitive, FilterSubstringsInitial, condition[:len(condition)-1], "Initial Substring"))
 			packet.AppendChild(seq)
@@ -250,7 +250,7 @@ func compileFilter(filter string, pos int) (*ber.Packet, int, error) {
 func ServerApplyFilter(f *ber.Packet, entry *Entry) (bool, uint64) {
 	//log.Printf("%# v", pretty.Formatter(entry))
 
-	switch filterMap[f.Tag] {
+	switch FilterMap[f.Tag] {
 	default:
 		//log.Fatalf("Unknown LDAP filter code: %d", f.Tag)
 		return false, LDAPResultOperationsError
