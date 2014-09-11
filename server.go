@@ -1,7 +1,5 @@
 package ldap
 
-//import "github.com/kr/pretty"
-
 import (
 	"crypto/tls"
 	"errors"
@@ -10,6 +8,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 )
 
 type Binder interface {
@@ -24,6 +23,15 @@ type Server struct {
 	bindFns   map[string]Binder
 	searchFns map[string]Searcher
 	quit      chan bool
+	stats     *Stats
+}
+
+type Stats struct {
+	Conns      int
+	Binds      int
+	Unbinds    int
+	Searches   int
+	statsMutex sync.Mutex
 }
 
 type ServerSearchResult struct {
@@ -42,6 +50,7 @@ func NewServer() *Server {
 	s.bindFns = make(map[string]Binder)
 	s.searchFns = make(map[string]Searcher)
 	s.bindFns[""] = d
+	s.stats = nil
 	s.searchFns[""] = d
 	return s
 }
@@ -72,6 +81,23 @@ func (server *Server) ListenAndServeTLS(listenString string, certFile string, ke
 	}
 	return nil
 }
+
+func (server *Server) SetStats(enable bool) {
+	if enable {
+		server.stats = &Stats{}
+	} else {
+		server.stats = nil
+	}
+}
+
+func (server *Server) GetStats() Stats {
+	defer func() {
+		server.stats.statsMutex.Unlock()
+	}()
+	server.stats.statsMutex.Lock()
+	return *server.stats
+}
+
 func (server *Server) ListenAndServe(listenString string) error {
 	ln, err := net.Listen("tcp", listenString)
 	if err != nil {
@@ -103,7 +129,8 @@ listener:
 	for {
 		select {
 		case c := <-newConn:
-			go handleConnection(c, server.bindFns, server.searchFns)
+			server.stats.countConns(1)
+			go server.handleConnection(c)
 		case <-server.quit:
 			ln.Close()
 			break listener
@@ -113,7 +140,8 @@ listener:
 }
 
 /////////////////////////
-func handleConnection(conn net.Conn, bindFns map[string]Binder, searchFns map[string]Searcher) {
+
+func (server *Server) handleConnection(conn net.Conn) {
 	boundDN := "" // "" == anonymous
 
 handler:
@@ -143,13 +171,14 @@ handler:
 		// dispatch the LDAP operation
 		switch req.Tag { // ldap op code
 		default:
-			log.Printf("Unhandled operation: %s [%d]", ApplicationMap[req.Tag], req.Tag)
 			//log.Printf("Bound as %s", boundDN)
 			//ber.PrintPacket(packet)
+			log.Printf("Unhandled operation: %s [%d]", ApplicationMap[req.Tag], req.Tag)
 			break handler
 
 		case ApplicationBindRequest:
-			ldapResultCode := handleBindRequest(req, bindFns, conn.RemoteAddr().String())
+			server.stats.countBinds(1)
+			ldapResultCode := handleBindRequest(req, server.bindFns, conn.RemoteAddr().String())
 			if ldapResultCode == LDAPResultSuccess {
 				boundDN = req.Children[1].Value.(string)
 			}
@@ -159,7 +188,8 @@ handler:
 				break handler
 			}
 		case ApplicationSearchRequest:
-			if err := handleSearchRequest(req, messageID, boundDN, searchFns, conn); err != nil {
+			server.stats.countSearches(1)
+			if err := handleSearchRequest(req, messageID, boundDN, server.searchFns, conn); err != nil {
 				//log.Printf("handleSearchRequest error %s", err.Error())
 				if err = sendPacket(conn, encodeSearchDone(messageID, LDAPResultOperationsError)); err != nil {
 					log.Printf("sendPacket error %s", err.Error())
@@ -168,7 +198,31 @@ handler:
 				break handler
 			}
 		case ApplicationUnbindRequest:
+			server.stats.countUnbinds(1)
+			break handler // simply disconnect - this IS implemented
+
+		case ApplicationModifyRequest:
+			log.Printf("Unhandled operation: %s [%d]", ApplicationMap[req.Tag], req.Tag)
 			break handler
+		case ApplicationAddRequest:
+			log.Printf("Unhandled operation: %s [%d]", ApplicationMap[req.Tag], req.Tag)
+			break handler
+		case ApplicationDelRequest:
+			log.Printf("Unhandled operation: %s [%d]", ApplicationMap[req.Tag], req.Tag)
+			break handler
+		case ApplicationModifyDNRequest:
+			log.Printf("Unhandled operation: %s [%d]", ApplicationMap[req.Tag], req.Tag)
+			break handler
+		case ApplicationCompareRequest:
+			log.Printf("Unhandled operation: %s [%d]", ApplicationMap[req.Tag], req.Tag)
+			break handler
+		case ApplicationAbandonRequest:
+			log.Printf("Unhandled operation: %s [%d]", ApplicationMap[req.Tag], req.Tag)
+			break handler
+		case ApplicationExtendedRequest:
+			log.Printf("Unhandled operation: %s [%d]", ApplicationMap[req.Tag], req.Tag)
+			break handler
+
 		}
 	}
 
@@ -399,6 +453,36 @@ func encodeSearchDone(messageID uint64, ldapResultCode uint64) *ber.Packet {
 	responsePacket.AppendChild(donePacket)
 
 	return responsePacket
+}
+
+/////////////////////////
+func (stats *Stats) countConns(delta int) {
+	if stats != nil {
+		stats.statsMutex.Lock()
+		stats.Conns += delta
+		stats.statsMutex.Unlock()
+	}
+}
+func (stats *Stats) countBinds(delta int) {
+	if stats != nil {
+		stats.statsMutex.Lock()
+		stats.Binds += delta
+		stats.statsMutex.Unlock()
+	}
+}
+func (stats *Stats) countUnbinds(delta int) {
+	if stats != nil {
+		stats.statsMutex.Lock()
+		stats.Unbinds += delta
+		stats.statsMutex.Unlock()
+	}
+}
+func (stats *Stats) countSearches(delta int) {
+	if stats != nil {
+		stats.statsMutex.Lock()
+		stats.Searches += delta
+		stats.statsMutex.Unlock()
+	}
 }
 
 /////////////////////////
