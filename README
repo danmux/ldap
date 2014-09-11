@@ -1,9 +1,10 @@
 Basic LDAP v3 functionality for the GO programming language.
 
-Required Librarys: 
+Required Libraries: 
    github.com/vanackere/asn1-ber
 
 Working:
+   Run an LDAP server
    Connecting to LDAP server
    Binding to LDAP server
    Searching for entries
@@ -17,6 +18,7 @@ Examples:
 
 Tests Implemented:
    Filter Compile / Decompile
+   Server/LDAPd
 
 TODO:
    Add Requests / Responses
